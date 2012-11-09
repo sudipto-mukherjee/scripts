@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#/usr/bin/env python
 """
 SurprisalCalculator objects are used to calculate the surprisal
 values for two sparse transition count matrices. The variance of 
