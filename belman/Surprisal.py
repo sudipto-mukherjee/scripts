@@ -50,7 +50,7 @@ class SurprisalCalculator:
         for index in range(len(counts)):
             if counts[index] != 0:
                 entropy_sum += counts[index]*np.log(counts[index])
-
+        
         if total_counts == 0:
             entropy = 0.0
         else:
@@ -74,7 +74,8 @@ class SurprisalCalculator:
 
         surprisal = ((total_combined_counts * combined_entropy) -
                         (total_counts2 * entropy2) - (total_counts1 * entropy1))
-        if (weighted):
+
+        if (weighted and total_combined_counts != 0):
             surprisal /= float(total_combined_counts)
 
         return surprisal
@@ -104,12 +105,18 @@ class SurprisalCalculator:
         p_i ~ counts
         """
         covariance_matrix = np.zeros((sparse.shape[0], sparse.shape[1]))
-        
+            
         for i in range(sparse.shape[0]):
             j_states = sparse.col[sparse.row == i]
             counts = sparse.data[sparse.row == i].astype(np.float64)
-            total_counts = np.sum(counts).astype(np.float64)
-            self_transition_counts = sparse.data[(sparse.row == i)*(sparse.col == i)][0]
+            total_counts = np.sum(counts).astype(np.float64) 
+            self_transition_counts = sparse.data[(sparse.row == i)*(sparse.col == i)]
+            
+            if not self_transition_counts: #breaks this iteration of the loop
+                continue                   #if there are 0 self transition counts
+                
+            else:
+                self_transition_counts = self_transition_counts[0] 
 
             for index in range(len(j_states)):
                 j_state = j_states[index]
@@ -141,23 +148,26 @@ class SurprisalCalculator:
         total_counts2 = np.sum(counts2).astype(np.float64)
         total_counts = total_counts1 + total_counts2
 
+        if total_counts == 0:
+            variance = 0.0
+
         for i in range(len(j_states)):
             j_state = j_states[i]
+
             if counts1[i] != 0:
-                sensitivities1[j_state] = (np.log(total_counts1 / total_counts) - 
-                                          np.log(counts1[i] / (counts1[i] + counts2[i])))
+                sensitivities1[j_state] += (np.log(total_counts1 / total_counts) - 
+                                            np.log(counts1[i] / (counts1[i] + counts2[i])))
 
             if counts2[i] != 0:
-                sensitivities2[j_state] = (np.log(total_counts2 / total_counts) -
-                                          np.log(counts2[i] / (counts1[i] + counts2[i])))
-
-            if weighted:
+                sensitivities2[j_state] += (np.log(total_counts2 / total_counts) -
+                                            np.log(counts2[i] / (counts1[i] + counts2[i])))
+                
+            if weighted and total_counts != 0:
                 sensitivities1[j_state] /= total_counts
                 sensitivities2[j_state] /= total_counts
 
             sensitivities = np.append(sensitivities1, sensitivities2)
-            #print 'sensitivities.shape', sensitivities.shape
-            #print 'diagonal_covariances.shape', diagonal_covariances.shape
+
             variance = (sensitivities.T).dot(diagonal_covariances).dot(sensitivities)
 
         return variance
@@ -168,12 +178,20 @@ class SurprisalCalculator:
         creating pseudo-count matrices from transition probabilities
         and then estimating the variance of the resulting array.    
         """
+ 
         total_counts1 = np.sum(counts1)
-        prob1 = np.divide(counts1, total_counts1)
+ 
+        if total_counts1 == 0:      #If total counts is zero, 
+            prob1 = counts1         #all probabilities are zero, which will be
+        else:                       #equivalent to the count matrix.
+            prob1 = np.divide(counts1, total_counts1)
 
         total_counts2 = np.sum(counts2)
-        prob2 = np.divide(counts2, total_counts2)
-
+ 
+        if total_counts2 == 0:              
+            prob2 = counts2   
+        else:
+            prob2 = np.divide(counts2, total_counts2)
         surprisals = []
         sampled_counts1 = np.random.multinomial(total_counts1, prob1,  
                                                 size = n_bootstraps)
@@ -189,12 +207,21 @@ if __name__ == '__main__':
     sparse1 = mmread(sys.argv[1])
     sparse2 = mmread(sys.argv[2])
     obj = SurprisalCalculator(sparse1, sparse2) 
-    print 'state\tsurprisal\tVariances (analytical)\tVariances (bootstrap)\tN_row_counts'
-    for istate in range(72):
+#    print 'state\tsurprisal\tVariances (analytical)\tVariances (bootstrap)\tN_row_counts'
+    surprisals = []
+    variances = []
+    samples = []
+
+    for istate in range(sparse1.shape[0]):
+        print 'istate', istate
         counts1, counts2 = obj.prepare_sparse_matrices(istate)
         surprisal = obj.calculate_surprisal(counts1, counts2, weighted=True)
         var_analytical = obj.estimate_surprisal_variance_analytical(istate)
         var_bootstrap  = obj.estimate_surprisal_variance_bootstrap(counts1, counts2, n_bootstraps=1000, weighted=True)
-        num_row_counts = np.sum(counts1) + np.sum(counts2)
-        print '%d\t%e\t%e\t%e\t%d'%(istate, surprisal, var_analytical, var_bootstrap, num_row_counts)
+        #num_row_counts = np.sum(counts1) + np.sum(counts2)
+        num_samples = np.sum(sparse1.data)
+  
+        print '%d\t%e\t%e\t%d'%(istate, surprisal, var_bootstrap, num_samples)
+
+
     #print "Weighted Surprisals", obj.calculate_all_surprisal(weighted=True)                
