@@ -31,7 +31,7 @@ def Reference_Rg(trajfile):
         mu = XYZ.mean(0)
         mu = mu.tolist()
         XYZ2 = XYZ-np.tile(mu,(len(XYZ),1))
-        Rg.append((XYZ2**2.).mean()**0.5)
+        Rg.append(((XYZList**2).sum() / n_atoms) ** (0.5))
     return Rg
 
 def checkoutput(Output):
